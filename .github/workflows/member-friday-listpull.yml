@@ -1,0 +1,46 @@
+# Member Friday Listpull - runs on 1st of each month at 6 AM Pacific (14:00 UTC)
+# Requires SNOWFLAKE_TOKEN secret (PAT) - runs in cloud regardless of local device
+name: Member Friday Listpull
+on:
+  schedule:
+    - cron: '0 14 1 * *'
+  workflow_dispatch:  # allows manual run from GitHub Actions tab
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install snowflake-connector-python
+      - name: Verify secrets
+        env:
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_TOKEN: ${{ secrets.SNOWFLAKE_TOKEN }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        run: |
+          [ -n "$SNOWFLAKE_TOKEN" ] && echo "✓ SNOWFLAKE_TOKEN is set" || (echo "✗ SNOWFLAKE_TOKEN is missing" && exit 1)
+          [ -n "$SNOWFLAKE_USER" ] && echo "✓ SNOWFLAKE_USER is set" || (echo "✗ SNOWFLAKE_USER is missing" && exit 1)
+          [ -n "$SNOWFLAKE_ACCOUNT" ] && echo "✓ SNOWFLAKE_ACCOUNT is set" || (echo "✗ SNOWFLAKE_ACCOUNT is missing" && exit 1)
+      - name: Run Snowflake export
+        env:
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_TOKEN: ${{ secrets.SNOWFLAKE_TOKEN }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        run: python3 snowflake_connect.py
+      - name: Upload CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: invitable-users-${{ github.run_number }}
+          path: snowflake_exports/*.csv
+      - name: Notify Slack
+        if: success() && secrets.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data "{\"text\": \"✅ Member Friday Listpull completed. CSV is ready for download.\\n<$RUN_URL|View workflow & download from Artifacts>\"}" "$SLACK_WEBHOOK_URL"

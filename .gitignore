@@ -1,0 +1,5 @@
+snowflake_exports/
+__pycache__/
+*.pyc
+.env
+.env.*
